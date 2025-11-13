@@ -14,6 +14,7 @@ import { ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { CredentialsForm } from "./credentials-form"
 
 export function CheckoutForm() {
   const { items, getTotalPrice, clearCart } = useCartStore()
@@ -49,6 +50,8 @@ export function CheckoutForm() {
     setLoading(true)
 
     try {
+      const tempCredentials = sessionStorage.getItem("seniorTempCredentials")
+
       const response = await fetch("/api/orders/create", {
         method: "POST",
         headers: {
@@ -57,6 +60,7 @@ export function CheckoutForm() {
         body: JSON.stringify({
           customerData: formData,
           items: items,
+          ...(tempCredentials && { tempCredentials: JSON.parse(tempCredentials) }),
         }),
       })
 
@@ -73,13 +77,17 @@ export function CheckoutForm() {
         description: `Número do pedido: ${data.orderId}`,
       })
 
-      // Redirecionar para página de sucesso com informações do pedido
       const queryParams = new URLSearchParams({
         seniorOrderId: data.seniorOrderId || "",
         customerName: encodeURIComponent(formData.name),
         itemCount: items.length.toString(),
         total: total.toString(),
+        statusCode: data.statusCode?.toString() || "200",
+        timestamp: data.timestamp || "",
       })
+
+      const seniorResponseEncoded = btoa(JSON.stringify(data.seniorResponse || {}))
+      queryParams.append("apiResponse", seniorResponseEncoded)
 
       router.push(`/order-success/${data.orderId}?${queryParams.toString()}`)
     } catch (error) {
@@ -112,6 +120,8 @@ export function CheckoutForm() {
         <div className="grid gap-8 lg:grid-cols-3">
           {/* Customer Form */}
           <div className="space-y-6 lg:col-span-2">
+            <CredentialsForm />
+
             <Card>
               <CardHeader>
                 <CardTitle>Dados do Solicitante</CardTitle>

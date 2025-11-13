@@ -73,9 +73,13 @@ export async function getSeniorToken(): Promise<string> {
 
 /**
  * Autentica usando aplicação (chave e segredo)
- * Alternativa ao login com usuário e senha
+ * Pode usar credenciais do ambiente ou fornecidas temporariamente
  */
-export async function getSeniorTokenWithKey(): Promise<string> {
+export async function getSeniorTokenWithKey(tempCredentials?: {
+  clientId: string
+  appKey: string
+  appSecret: string
+}): Promise<string> {
   // Verificar se o token em cache ainda é válido
   if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) {
     console.log("[v0] Usando token em cache")
@@ -84,9 +88,10 @@ export async function getSeniorTokenWithKey(): Promise<string> {
 
   try {
     const baseUrl = process.env.SENIOR_API_BASE_URL || "https://api.senior.com.br"
-    const clientId = process.env.SENIOR_CLIENT_ID
-    const appKey = process.env.SENIOR_APP_KEY
-    const appSecret = process.env.SENIOR_APP_SECRET
+
+    const clientId = tempCredentials?.clientId || process.env.SENIOR_CLIENT_ID
+    const appKey = tempCredentials?.appKey || process.env.SENIOR_APP_KEY
+    const appSecret = tempCredentials?.appSecret || process.env.SENIOR_APP_SECRET
     const tenant = process.env.SENIOR_TENANT || "smart40"
 
     if (!clientId || !appKey || !appSecret) {

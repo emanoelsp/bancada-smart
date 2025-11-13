@@ -6,7 +6,7 @@ import { buildSeniorOrder } from "@/lib/senior-order"
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { customerData, items } = body as {
+    const { customerData, items, tempCredentials } = body as {
       customerData: {
         name: string
         email: string
@@ -15,6 +15,11 @@ export async function POST(request: NextRequest) {
         notes: string
       }
       items: CartItem[]
+      tempCredentials?: {
+        clientId: string
+        appKey: string
+        appSecret: string
+      }
     }
 
     console.log("[v0] Criando pedido para:", customerData.name)
@@ -29,8 +34,7 @@ export async function POST(request: NextRequest) {
 
     let token: string
     try {
-      // Tentar autenticação com aplicação (preferencial)
-      token = await getSeniorTokenWithKey()
+      token = await getSeniorTokenWithKey(tempCredentials)
     } catch (error) {
       console.log("[v0] Falha ao autenticar com chave, tentando usuário/senha...")
       // Fallback para autenticação tradicional (se configurado)
@@ -39,7 +43,7 @@ export async function POST(request: NextRequest) {
     }
 
     const baseUrl = process.env.SENIOR_API_BASE_URL || "https://api.senior.com.br"
-    const clientId = process.env.SENIOR_CLIENT_ID
+    const clientId = tempCredentials?.clientId || process.env.SENIOR_CLIENT_ID
 
     if (!clientId) {
       throw new Error("SENIOR_CLIENT_ID não configurado")
@@ -78,6 +82,8 @@ export async function POST(request: NextRequest) {
       message: "Pedido criado com sucesso e enviado para produção na Bancada Smart 4.0",
       seniorOrder: seniorOrder,
       seniorResponse: seniorData,
+      statusCode: seniorResponse.status,
+      timestamp: new Date().toISOString(),
     })
   } catch (error) {
     console.error("[v0] Erro ao criar pedido:", error)
