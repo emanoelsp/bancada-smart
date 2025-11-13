@@ -1,23 +1,87 @@
 "use client"
 
+import { Canvas } from "@react-three/fiber"
+import { OrbitControls, PerspectiveCamera } from "@react-three/drei"
 import type { BoxConfiguration } from "@/lib/types"
 import { BOX_COLORS, SIDE_COLORS } from "@/lib/constants"
-import { useEffect, useRef } from "react"
 
 interface BoxPreview3DProps {
   configuration: BoxConfiguration
   size?: "sm" | "md" | "lg"
-  interactive?: boolean
 }
 
-export function BoxPreview3D({ configuration, size = "md", interactive = false }: BoxPreview3DProps) {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+function BlockMesh({ configuration }: { configuration: BoxConfiguration }) {
+  const boxColor = configuration.boxColor
+    ? BOX_COLORS.find((c) => c.value === configuration.boxColor)?.hex || "#c0c0c0"
+    : "#c0c0c0"
 
-  const boxColor = BOX_COLORS.find((c) => c.value === configuration.boxColor)?.hex || "#ef4444"
-  const side1Color = SIDE_COLORS.find((c) => c.value === configuration.side1Color)?.hex || "#3b82f6"
-  const side2Color = SIDE_COLORS.find((c) => c.value === configuration.side2Color)?.hex || "#eab308"
-  const side3Color = SIDE_COLORS.find((c) => c.value === configuration.side3Color)?.hex || "#1a1a1a"
+  const side1Color = configuration.side1Color
+    ? SIDE_COLORS.find((c) => c.value === configuration.side1Color)?.hex
+    : null
+  const side2Color = configuration.side2Color
+    ? SIDE_COLORS.find((c) => c.value === configuration.side2Color)?.hex
+    : null
+  const side3Color = configuration.side3Color
+    ? SIDE_COLORS.find((c) => c.value === configuration.side3Color)?.hex
+    : null
 
+  return (
+    <group>
+      {/* Estrutura base da caixa */}
+      <mesh position={[0, 0, 0]}>
+        <boxGeometry args={[2, 0.8, 2]} />
+        <meshPhongMaterial color={boxColor} shininess={100} />
+      </mesh>
+
+      {/* Tampa - cor do bloco */}
+      <mesh position={[0, 0.5, 0]}>
+        <boxGeometry args={[2, 0.15, 2]} />
+        <meshPhongMaterial color={boxColor} shininess={100} />
+      </mesh>
+
+      {/* Parede frontal (Lateral 1 - Frente) */}
+      <mesh position={[0, 0.15, -1.05]}>
+        <boxGeometry args={[2, 0.6, 0.2]} />
+        <meshPhongMaterial
+          color={side1Color || boxColor}
+          shininess={80}
+          opacity={side1Color ? 1 : 0.3}
+          transparent={!side1Color}
+        />
+      </mesh>
+
+      {/* Parede traseira - cor do bloco */}
+      <mesh position={[0, 0.15, 1.05]}>
+        <boxGeometry args={[2, 0.6, 0.2]} />
+        <meshPhongMaterial color={boxColor} shininess={80} />
+      </mesh>
+
+      {/* Parede lateral esquerda (Lateral 3 - Esquerda) */}
+      <mesh position={[-1.05, 0.15, 0]}>
+        <boxGeometry args={[0.2, 0.6, 2]} />
+        <meshPhongMaterial
+          color={side3Color || boxColor}
+          shininess={80}
+          opacity={side3Color ? 1 : 0.3}
+          transparent={!side3Color}
+        />
+      </mesh>
+
+      {/* Parede lateral direita (Lateral 2 - Direita) */}
+      <mesh position={[1.05, 0.15, 0]}>
+        <boxGeometry args={[0.2, 0.6, 2]} />
+        <meshPhongMaterial
+          color={side2Color || boxColor}
+          shininess={80}
+          opacity={side2Color ? 1 : 0.3}
+          transparent={!side2Color}
+        />
+      </mesh>
+    </group>
+  )
+}
+
+export function BoxPreview3D({ configuration, size = "md" }: BoxPreview3DProps) {
   const dimensions = {
     sm: { width: 200, height: 160 },
     md: { width: 350, height: 280 },
@@ -26,108 +90,18 @@ export function BoxPreview3D({ configuration, size = "md", interactive = false }
 
   const { width, height } = dimensions[size]
 
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    // Clear canvas with light background
-    ctx.fillStyle = "#f9fafb"
-    ctx.fillRect(0, 0, width, height)
-
-    ctx.save()
-    ctx.translate(width / 2, height / 2.2)
-
-    const boxWidth = 100
-    const boxHeight = 70
-    const boxDepth = 50
-
-    // Ângulo isométrico (30 graus)
-    const angle = Math.PI / 6
-
-    ctx.fillStyle = boxColor
-    ctx.beginPath()
-    ctx.moveTo(-boxWidth / 2, -boxHeight / 2)
-    ctx.lineTo(boxWidth / 2, -boxHeight / 2)
-    ctx.lineTo(boxWidth / 2, boxHeight / 2)
-    ctx.lineTo(-boxWidth / 2, boxHeight / 2)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = "rgba(0,0,0,0.3)"
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-
-    ctx.fillStyle = side1Color
-    ctx.beginPath()
-    const leftX = -boxWidth / 2
-    const leftDepth = Math.cos(angle) * boxDepth
-    const leftYShift = Math.sin(angle) * boxDepth * 0.8
-
-    ctx.moveTo(leftX, -boxHeight / 2)
-    ctx.lineTo(leftX - leftDepth, -boxHeight / 2 - leftYShift)
-    ctx.lineTo(leftX - leftDepth, boxHeight / 2 - leftYShift)
-    ctx.lineTo(leftX, boxHeight / 2)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = "rgba(0,0,0,0.3)"
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-
-    ctx.fillStyle = side2Color
-    ctx.beginPath()
-    const rightX = boxWidth / 2
-    const rightDepth = Math.cos(angle) * boxDepth
-    const rightYShift = Math.sin(angle) * boxDepth * 0.8
-
-    ctx.moveTo(rightX, -boxHeight / 2)
-    ctx.lineTo(rightX + rightDepth, -boxHeight / 2 - rightYShift)
-    ctx.lineTo(rightX + rightDepth, boxHeight / 2 - rightYShift)
-    ctx.lineTo(rightX, boxHeight / 2)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = "rgba(0,0,0,0.3)"
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-
-    ctx.fillStyle = side3Color
-    ctx.beginPath()
-    ctx.moveTo(-boxWidth / 2, -boxHeight / 2)
-    ctx.lineTo(boxWidth / 2, -boxHeight / 2)
-    ctx.lineTo(rightX + rightDepth, -boxHeight / 2 - rightYShift)
-    ctx.lineTo(leftX - leftDepth, -boxHeight / 2 - leftYShift)
-    ctx.closePath()
-    ctx.fill()
-    ctx.strokeStyle = "rgba(0,0,0,0.4)"
-    ctx.lineWidth = 1.5
-    ctx.stroke()
-
-    ctx.strokeStyle = "rgba(255,255,255,0.15)"
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(-boxWidth / 2 + 2, -boxHeight / 2 + 2)
-    ctx.lineTo(boxWidth / 2 - 2, -boxHeight / 2 + 2)
-    ctx.lineTo(boxWidth / 2 - 2, boxHeight / 2 - 2)
-    ctx.lineTo(-boxWidth / 2 + 2, boxHeight / 2 - 2)
-    ctx.closePath()
-    ctx.stroke()
-
-    ctx.restore()
-  }, [configuration, width, height])
-
   return (
-    <div className="flex items-center justify-center" style={{ width, height }}>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        className="rounded-lg border border-border/20"
-        style={{
-          maxWidth: "100%",
-          height: "auto",
-        }}
-      />
+    <div className="flex items-center justify-center overflow-hidden rounded-lg border border-border/20 bg-white">
+      <Canvas style={{ width, height }} camera={{ position: [3, 2.5, 3], fov: 50 }}>
+        <PerspectiveCamera makeDefault position={[3, 2.5, 3]} fov={50} />
+        <OrbitControls enableZoom={true} enablePan={true} autoRotate autoRotateSpeed={4} />
+
+        <ambientLight intensity={0.9} />
+        <pointLight position={[5, 5, 5]} intensity={1.2} />
+        <pointLight position={[-5, 5, -5]} intensity={0.8} />
+
+        <BlockMesh configuration={configuration} />
+      </Canvas>
     </div>
   )
 }

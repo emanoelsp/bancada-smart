@@ -21,10 +21,10 @@ interface BlockConfiguratorProps {
 
 export function BlockConfigurator({ blockType }: BlockConfiguratorProps) {
   const initialBoxConfig: BoxConfiguration = {
-    boxColor: "black",
-    side1Color: "yellow",
-    side2Color: "blue",
-    side3Color: "green",
+    boxColor: undefined,
+    side1Color: undefined,
+    side2Color: undefined,
+    side3Color: undefined,
   }
 
   const [boxes, setBoxes] = useState<BoxConfiguration[]>(
@@ -225,7 +225,7 @@ export function BlockConfigurator({ blockType }: BlockConfiguratorProps) {
               </TabsContent>
 
               <TabsContent value="side3" className="space-y-3 pt-4">
-                <Label className="text-base font-semibold">Cor da Lateral 3 (Topo)</Label>
+                <Label className="text-base font-semibold">Cor da Lateral 3 (Esquerda)</Label>
                 <RadioGroup
                   value={activeBox.side3Color}
                   onValueChange={(value) => updateBoxConfig(activeBoxIndex, { side3Color: value as any })}
