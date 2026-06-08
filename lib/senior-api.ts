@@ -1,143 +1,217 @@
-// Biblioteca para integração com Senior X Platform API
-// Automatiza autenticação e geração de tokens
+// Senior X Platform API integration
+// Endpoint: POST /erpx_com_ven/pedido/apis/order (async — returns 201, number via webhook)
 
-interface SeniorAuthResponse {
-  jsonToken: string
-  refreshToken: string
-  expiresIn: number
+import type { CartItem } from "@/lib/types"
+import { BLOCK_TYPES, BOX_COLORS, SIDE_COLORS } from "@/lib/constants"
+
+export interface SeniorCredentials {
+  baseUrl: string       // "https://api.senior.com.br"
+  clientId: string      // client_id header (UUID da aplicação no portal)
+  tenant: string        // nome do tenant no Senior X
+  authMethod: "userpass" | "appkey"
+  username?: string
+  password?: string
+  appKey?: string       // mesmo valor que clientId (key no loginWithKey)
+  appSecret?: string    // Client Secret do portal
 }
 
-interface SeniorTokenData {
-  access_token: string
-  token_type: string
-  expires_in: number
+// Payload no formato do novo endpoint erpx_com_ven/pedido/apis/order
+export interface PedidoVendaItem {
+  product: { code: string }
+  price: number
+  quantity: number
+  observation?: string
 }
 
-let cachedToken: string | null = null
-let tokenExpiry: number | null = null
+export interface PedidoVenda {
+  externalId: string
+  company: { code: number }
+  branch: { code: number }
+  customer: { code: number }
+  items: PedidoVendaItem[]
+  observation?: string
+  close: boolean
+}
+
+export interface CustomerData {
+  name: string
+  email: string
+  phone: string
+  company: string
+  notes: string
+}
+
+export interface EnviarPedidoResult {
+  externalId: string
+  accepted: boolean
+}
 
 /**
- * Autentica na API Senior X e retorna o token de acesso
- * Usa cache para evitar requisições desnecessárias
+ * Autentica e retorna Bearer token.
+ * loginWithKey: key = appKey (Client ID), secret = appSecret (Client Secret), tenantName = tenant
  */
-export async function getSeniorToken(): Promise<string> {
-  // Verificar se o token em cache ainda é válido
-  if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) {
-    console.log("[v0] Usando token em cache")
-    return cachedToken
-  }
+export async function authenticate(credentials: SeniorCredentials): Promise<string> {
+  const base = credentials.baseUrl.replace(/\/$/, "")
 
-  try {
-    const baseUrl = process.env.SENIOR_API_BASE_URL || "https://api.senior.com.br"
-    const clientId = process.env.SENIOR_CLIENT_ID
-    const username = process.env.SENIOR_USERNAME
-    const password = process.env.SENIOR_PASSWORD
-
-    if (!clientId) {
-      throw new Error("SENIOR_CLIENT_ID não configurado nas variáveis de ambiente")
+  if (credentials.authMethod === "appkey") {
+    if (!credentials.appKey || !credentials.appSecret) {
+      throw new Error("App Key e App Secret são obrigatórios para autenticação com chave de aplicação")
     }
 
-    console.log("[v0] Autenticando na API Senior X...")
+    const url = `${base}/platform/authentication/anonymous/loginWithKey`
+    const body = {
+      accessKey: credentials.appKey,   // campo correto conforme docs: accessKey
+      secret: credentials.appSecret,
+      tenantName: credentials.tenant,
+    }
 
-    const response = await fetch(`${baseUrl}/platform/authentication/login`, {
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        client_id: clientId,
+        client_id: credentials.clientId,
       },
-      body: JSON.stringify({
-        username: username || "smart40_api",
-        password: password || "smart40_password",
-      }),
+      body: JSON.stringify(body),
     })
 
     if (!response.ok) {
-      throw new Error(`Falha na autenticação: ${response.status} ${response.statusText}`)
+      const text = await response.text().catch(() => "")
+      throw new Error(
+        `Auth falhou [${response.status}] POST ${url}\nBody enviado: ${JSON.stringify(body)}\nResposta: ${text || response.statusText}`,
+      )
     }
 
-    const authData: SeniorAuthResponse = await response.json()
-    const tokenData: SeniorTokenData = JSON.parse(authData.jsonToken)
-
-    // Armazenar token em cache com margem de 5 minutos antes da expiração
-    cachedToken = tokenData.access_token
-    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000
-
-    console.log("[v0] Token obtido com sucesso, válido por", tokenData.expires_in, "segundos")
-
-    return tokenData.access_token
-  } catch (error) {
-    console.error("[v0] Erro ao obter token Senior X:", error)
-    throw error
-  }
-}
-
-/**
- * Autentica usando aplicação (chave e segredo)
- * Pode usar credenciais do ambiente ou fornecidas temporariamente
- */
-export async function getSeniorTokenWithKey(tempCredentials?: {
-  clientId: string
-  appKey: string
-  appSecret: string
-}): Promise<string> {
-  // Verificar se o token em cache ainda é válido
-  if (cachedToken && tokenExpiry && Date.now() < tokenExpiry) {
-    console.log("[v0] Usando token em cache")
-    return cachedToken
-  }
-
-  try {
-    const baseUrl = process.env.SENIOR_API_BASE_URL || "https://api.senior.com.br"
-
-    const clientId = tempCredentials?.clientId || process.env.SENIOR_CLIENT_ID
-    const appKey = tempCredentials?.appKey || process.env.SENIOR_APP_KEY
-    const appSecret = tempCredentials?.appSecret || process.env.SENIOR_APP_SECRET
-    const tenant = process.env.SENIOR_TENANT || "smart40"
-
-    if (!clientId || !appKey || !appSecret) {
-      throw new Error("Credenciais de aplicação não configuradas")
+    return extractToken(await response.json())
+  } else {
+    if (!credentials.username || !credentials.password) {
+      throw new Error("Usuário e senha são obrigatórios para autenticação por usuário/senha")
     }
 
-    console.log("[v0] Autenticando com aplicação na API Senior X...")
+    const username = credentials.username.includes("@")
+      ? credentials.username
+      : `${credentials.username}@${credentials.tenant}`
 
-    const response = await fetch(`${baseUrl}/platform/authentication/anonymous/loginWithKey`, {
+    const url = `${base}/platform/authentication/anonymous/login`
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        client_id: clientId,
+        client_id: credentials.clientId,
       },
-      body: JSON.stringify({
-        key: appKey,
-        secret: appSecret,
-        tenant: tenant,
-      }),
+      body: JSON.stringify({ username, password: credentials.password }),
     })
 
     if (!response.ok) {
-      throw new Error(`Falha na autenticação com chave: ${response.status} ${response.statusText}`)
+      const text = await response.text().catch(() => "")
+      throw new Error(
+        `Auth falhou [${response.status}] POST ${url}\nResposta: ${text || response.statusText}`,
+      )
     }
 
-    const authData: SeniorAuthResponse = await response.json()
-    const tokenData: SeniorTokenData = JSON.parse(authData.jsonToken)
+    return extractToken(await response.json())
+  }
+}
 
-    // Armazenar token em cache
-    cachedToken = tokenData.access_token
-    tokenExpiry = Date.now() + (tokenData.expires_in - 300) * 1000
+// Senior X pode retornar token em vários formatos
+function extractToken(data: Record<string, unknown>): string {
+  if (typeof data.access_token === "string" && data.access_token) return data.access_token
+  if (typeof data.jsonToken === "string") {
+    try {
+      const inner = JSON.parse(data.jsonToken) as Record<string, unknown>
+      if (typeof inner.access_token === "string" && inner.access_token) return inner.access_token
+    } catch {
+      // fall through
+    }
+  }
+  if (typeof data.token === "string" && data.token) return data.token
+  throw new Error(`Token não encontrado na resposta de auth. Resposta: ${JSON.stringify(data).slice(0, 300)}`)
+}
 
-    console.log("[v0] Token de aplicação obtido com sucesso")
+/**
+ * Constrói o payload no novo formato da API erpx_com_ven/pedido/apis/order.
+ */
+export function buildPedidoVenda(
+  items: CartItem[],
+  customerData: CustomerData,
+  companyCode = 1,
+  branchCode = 1,
+  customerCode = 1,
+): PedidoVenda {
+  const externalId = `SMART40-${Date.now()}`
 
-    return tokenData.access_token
-  } catch (error) {
-    console.error("[v0] Erro ao obter token com chave:", error)
-    throw error
+  const pedidoItems: PedidoVendaItem[] = items.map((item) => {
+    const blockTypeData = BLOCK_TYPES.find((bt) => bt.value === item.product.blockType)
+    const price = blockTypeData?.price || 0
+    const productCode = `SMART40-${item.product.blockType.toUpperCase()}`
+
+    const boxDescriptions = item.product.boxes
+      .map((box, i) => {
+        const boxColorName = BOX_COLORS.find((c) => c.value === box.boxColor)?.label || box.boxColor
+        const s1 = SIDE_COLORS.find((c) => c.value === box.side1Color)?.label || box.side1Color
+        const s2 = SIDE_COLORS.find((c) => c.value === box.side2Color)?.label || box.side2Color
+        const s3 = SIDE_COLORS.find((c) => c.value === box.side3Color)?.label || box.side3Color
+        return `Cx${i + 1}:${boxColorName}[L1:${s1} L2:${s2} L3:${s3}]`
+      })
+      .join(" | ")
+
+    return {
+      product: { code: productCode },
+      price,
+      quantity: item.quantity,
+      observation: boxDescriptions.slice(0, 999),
+    }
+  })
+
+  const observation = [
+    customerData.notes || null,
+    `Solicitante: ${customerData.name}`,
+    customerData.email ? `Email: ${customerData.email}` : null,
+    customerData.phone ? `Tel: ${customerData.phone}` : null,
+    customerData.company ? `Empresa: ${customerData.company}` : null,
+  ]
+    .filter(Boolean)
+    .join(" | ")
+    .slice(0, 999)
+
+  return {
+    externalId,
+    company: { code: companyCode },
+    branch: { code: branchCode },
+    customer: { code: customerCode },
+    items: pedidoItems,
+    observation,
+    close: true,
   }
 }
 
 /**
- * Limpa o cache do token (útil para testes ou logout)
+ * Envia pedido para POST /erpx_com_ven/pedido/apis/order.
+ * Retorna 201 = aceito (processamento assíncrono — número do pedido vem por webhook).
  */
-export function clearTokenCache(): void {
-  cachedToken = null
-  tokenExpiry = null
-  console.log("[v0] Cache de token limpo")
+export async function enviarPedidoVenda(
+  credentials: SeniorCredentials,
+  pedido: PedidoVenda,
+): Promise<EnviarPedidoResult> {
+  const token = await authenticate(credentials)
+  const base = credentials.baseUrl.replace(/\/$/, "")
+  const url = `${base}/erpx_com_ven/pedido/apis/order`
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+      client_id: credentials.clientId,
+    },
+    body: JSON.stringify(pedido),
+  })
+
+  if (response.status === 201) {
+    return { externalId: pedido.externalId, accepted: true }
+  }
+
+  const text = await response.text().catch(() => "")
+  throw new Error(
+    `Envio pedido falhou [${response.status}] POST ${url}\nPayload: ${JSON.stringify(pedido).slice(0, 500)}\nResposta: ${text || response.statusText}`,
+  )
 }
