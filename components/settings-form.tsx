@@ -86,14 +86,15 @@ export function SettingsForm({ redirectTo = "/", onSaved }: SettingsFormProps) {
     if (form.authMethod === "appkey" && (!form.appKey || !form.appSecret)) {
       toast({
         title: "Campos obrigatorios",
-        description: "Preencha App Key e App Secret",
+        description: "Preencha Client ID e Client Secret",
         variant: "destructive",
       })
       return
     }
 
     setSaving(true)
-    setCredentials(form)
+    // clientId (gateway header) = appKey (Senior Client ID) — same value, two API roles
+    setCredentials({ ...form, clientId: form.appKey || form.clientId })
     await new Promise((r) => setTimeout(r, 300))
     toast({
       title: "Configuracoes salvas!",
@@ -134,28 +135,6 @@ export function SettingsForm({ redirectTo = "/", onSaved }: SettingsFormProps) {
               onChange={handleChange}
               placeholder="https://api.senior.com.br"
             />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="clientId">Client ID</Label>
-            <Input
-              id="clientId"
-              name="clientId"
-              value={form.clientId}
-              onChange={handleChange}
-              placeholder="seu-client-id"
-            />
-            <p className="text-xs text-muted-foreground">
-              Obtido no portal{" "}
-              <a
-                href="http://api.xplatform.com.br/api-portal/pt-br/myapps"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline hover:text-foreground"
-              >
-                dev.senior.com.br
-              </a>
-            </p>
           </div>
 
           <div className="space-y-2">
@@ -203,17 +182,28 @@ export function SettingsForm({ redirectTo = "/", onSaved }: SettingsFormProps) {
           {form.authMethod === "appkey" && (
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="appKey">App Key</Label>
+                <Label htmlFor="appKey">Client ID</Label>
                 <Input
                   id="appKey"
                   name="appKey"
                   value={form.appKey}
                   onChange={handleChange}
-                  placeholder="Chave de aplicacao"
+                  placeholder="ex: e33b41c2-d5f4-4106-ac2b-a4758b66d2d5"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Campo <strong>Client ID</strong> exibido em "APP Info" no portal{" "}
+                  <a
+                    href="http://api.xplatform.com.br/api-portal/pt-br/myapps"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-foreground"
+                  >
+                    dev.senior.com.br
+                  </a>
+                </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="appSecret">App Secret</Label>
+                <Label htmlFor="appSecret">Client Secret</Label>
                 <div className="relative">
                   <Input
                     id="appSecret"
@@ -221,7 +211,7 @@ export function SettingsForm({ redirectTo = "/", onSaved }: SettingsFormProps) {
                     type={showSecret ? "text" : "password"}
                     value={form.appSecret}
                     onChange={handleChange}
-                    placeholder="Segredo da aplicacao"
+                    placeholder="ex: 135a4488-4bf3-4b91-b43d-8fd4e08aefb2"
                     className="pr-10"
                   />
                   <button
@@ -232,6 +222,9 @@ export function SettingsForm({ redirectTo = "/", onSaved }: SettingsFormProps) {
                     {showSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Campo <strong>Client Secret</strong> exibido em "APP Info" no portal dev.senior.com.br
+                </p>
               </div>
             </div>
           )}
